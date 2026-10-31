@@ -8,14 +8,30 @@ jobs:
       - name: Prepare
         run: |
           unzip -q mcjsmenu.zip
-          git clone https://github.com/bellard/quickjs /tmp/qjs
-          cd /tmp/qjs && git checkout 2024-01-13
-          mkdir -p $GITHUB_WORKSPACE/mcjsmenu/jni/quickjs
-          cp quickjs.c quickjs.h quickjs-atom.h quickjs-opcode.h cutils.c cutils.h libregexp.c libregexp.h libregexp-opcode.h libunicode.c libunicode.h libunicode-table.h list.h $GITHUB_WORKSPACE/mcjsmenu/jni/quickjs/
+          git clone --depth 1 https://github.com/bellard/quickjs /tmp/qjs
+          mkdir -p mcjsmenu/jni/quickjs
+          cp /tmp/qjs/*.h mcjsmenu/jni/quickjs/
+          for f in /tmp/qjs/*.c; do
+            case "$(basename $f)" in
+              qjs.c|qjsc.c|run-test262.c|quickjs-libc.c|repl.c|qjscalc.c|unicode_gen.c|api-test.c|fuzz*) ;;
+              *) cp $f mcjsmenu/jni/quickjs/ ;;
+            esac
+          done
+          ls mcjsmenu/jni/quickjs
       - name: Build
         run: |
           cd mcjsmenu
           sed -i 's/android-16/android-21/' jni/Application.mk
+          cat > jni/Android.mk <<'EOF'
+          LOCAL_PATH := $(call my-dir)
+          include $(CLEAR_VARS)
+          LOCAL_MODULE := mcjsmenu
+          LOCAL_SRC_FILES := main.cpp $(patsubst $(LOCAL_PATH)/%,%,$(wildcard $(LOCAL_PATH)/quickjs/*.c))
+          LOCAL_C_INCLUDES := $(LOCAL_PATH)/quickjs
+          LOCAL_CFLAGS := -O2 -D_GNU_SOURCE -DCONFIG_VERSION=\"mcjs\" -Wno-everything
+          LOCAL_LDLIBS := -llog -landroid -lEGL -lGLESv2 -ldl -lm
+          include $(BUILD_SHARED_LIBRARY)
+          EOF
           $ANDROID_NDK_HOME/ndk-build
       - uses: actions/upload-artifact@v4
         with:
